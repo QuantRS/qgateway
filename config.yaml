@@ -1,0 +1,56 @@
+
+auth-token:
+  # qrealtime
+  - "b0107179-42b4-39dd-8220-f48a84b4cef7"
+  # qmarket
+  - "b703dde0-51da-38ac-a1ea-4e941b9762df"
+
+queues:
+  # stock_cn_tick
+  - token: "c09c21f8-c29d-3fb3-86a8-39109742c802"
+    type: "router"
+    send_white: true
+    send_token:
+      - "b0107179-42b4-39dd-8220-f48a84b4cef7"
+    recv_white: false
+    recv_token: []
+  # stock_cn_1min
+  - token: "6ab1479f-cf4e-39d6-b722-262c56e55e45"
+    type: "router"
+    send_white: true
+    send_token:
+      - "b703dde0-51da-38ac-a1ea-4e941b9762df"
+    recv_white: false
+    recv_token: []
+  # stock_cn_5min
+  - token: "c0f90cc0-ca6e-3141-a53f-4492606604a0"
+    type: "router"
+    send_white: true
+    send_token:
+      - "b703dde0-51da-38ac-a1ea-4e941b9762df"
+    recv_white: false
+    recv_token: []
+  # stock_cn_15min
+  - token: "9bc928db-1faa-32eb-8f27-e21a4b6ecd56"
+    type: "router"
+    send_white: true
+    send_token:
+      - "b703dde0-51da-38ac-a1ea-4e941b9762df"
+    recv_white: false
+    recv_token: []
+  # stock_cn_30min
+  - token: "0e236a4e-6090-3dda-84b0-d9f38928add4"
+    type: "router"
+    send_white: true
+    send_token:
+      - "b703dde0-51da-38ac-a1ea-4e941b9762df"
+    recv_white: false
+    recv_token: []
+  # stock_cn_60min
+  - token: "1734bc73-2c54-358e-a197-7782979a7eef"
+    type: "router"
+    send_white: true
+    send_token:
+      - "b703dde0-51da-38ac-a1ea-4e941b9762df"
+    recv_white: false
+    recv_token: []
