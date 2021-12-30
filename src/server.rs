@@ -1,5 +1,3 @@
-use std::{collections::HashMap, net::SocketAddr, sync::{Arc, Mutex}};
-
 use futures::{StreamExt, TryStreamExt, channel::mpsc, future, pin_mut};
 
 use serde::{Deserialize, Serialize};
@@ -7,11 +5,17 @@ use serde_json::Value;
 use tokio::net::{TcpListener};
 use tokio_tungstenite::tungstenite::Message;
 
-pub struct Server;
+use crate::config;
+
+pub struct Server {
+    auth_tokens: Vec<String>
+}
 
 impl Server {
-    pub fn new() -> Server {
-        return Server;
+    pub fn new(auth_tokens: Vec<String>, queues: Vec<config::Queue>) -> Server {
+        return Server{
+            auth_tokens,
+        };
     }
 
     pub async fn start(&mut self, address: &str) {
@@ -59,8 +63,6 @@ impl Server {
                 future::select(broadcast_incoming, receive_from_others).await;
 
                 println!("{} disconnected", &addr);
-                sub_data_clone.lock().unwrap().remove(&addr);
-                sub_tick_clone.lock().unwrap().remove(&addr);
             });
         }
     }

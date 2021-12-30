@@ -1,3 +1,4 @@
+address: "0.0.0.0:8899"
 
 auth-token:
   # qrealtime
