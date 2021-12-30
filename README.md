@@ -2,6 +2,11 @@
 
 采用websocket模式。实现发送，接收。
 
+## queue模式
+- router (路由模式)
+- pubsub (懂得都懂)
+配置方式查看config.yaml
+
 ## 命令请求格式
 ```
 //有序args
