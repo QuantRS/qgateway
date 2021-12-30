@@ -11,7 +11,7 @@ use crate::config;
 
 pub struct Server {
     auth_tokens: Vec<String>,
-    auth_status: Arc<Mutex<HashMap<SocketAddr, bool>>>,
+    auth_status: Arc<Mutex<HashMap<SocketAddr, (String, bool)>>>,
     queues: Arc<Mutex<HashMap<String, Queue>>>,
 }
 
@@ -33,7 +33,11 @@ impl Server {
     fn create_queue(&mut self, config_queue: config::Queue) {
         self.queues.lock().unwrap().insert(config_queue.token, Queue{
             queue_type: config_queue.queue_type,
-            clients: HashMap::new()
+            clients: HashMap::new(),
+            send_white: config_queue.send_white,
+            send_token: config_queue.send_token,
+            recv_white: config_queue.recv_white,
+            recv_token: config_queue.recv_token,
         });
     }
 
@@ -75,7 +79,8 @@ impl Server {
                             let req: Request = json.unwrap();
                             match req.cmd_id {
                                 -1 => {
-                                    if !auth_status_clone.lock().unwrap().contains_key(&addr) {
+                                    if !auth_status_clone.lock().unwrap().contains_key(&addr) || !auth_status_clone.lock().unwrap().get(&addr).unwrap().1 {
+                                        println!("{}: not login.", addr);
                                         return future::ok(());
                                     }
 
@@ -89,24 +94,24 @@ impl Server {
                                 0 => {
                                     let mut token = "".to_string();
                                     if req.args.is_array() {
-                                        token = req.args.as_array().unwrap()[0].as_str().unwrap().to_string();
+                                        let list = req.args.as_array().unwrap();
+                                        if list.len() != 0 {
+                                            token = list[0].as_str().unwrap().to_string();
+                                        }
                                     } else if req.args.is_object() {
-                                        token = req.args.as_object().unwrap()["token"].as_str().unwrap().to_string();
+                                        let map = req.args.as_object().unwrap();
+                                        if map.contains_key("token") {
+                                            token = map["token"].as_str().unwrap().to_string();
+                                        }
                                     }
 
-                                    if token.eq("") {
-                                        tx.unbounded_send(Message::Close(None)).unwrap();
-                                        println!("{}: token is null", addr);
-                                        return future::ok(());
-                                    }
-
-                                    if !auth_tokens_clone.contains(&token) {
+                                    if !token.eq("") && !auth_tokens_clone.contains(&token) {
                                         tx.unbounded_send(Message::Close(None)).unwrap();
                                         println!("{}: token is error", addr);
                                         return future::ok(());
                                     }
 
-                                    auth_status_clone.lock().unwrap().insert(addr, true);
+                                    auth_status_clone.lock().unwrap().insert(addr, (token, true));
                                     let res = Response{
                                         cmd_id: 0,
                                         data: Value::Null,
@@ -115,6 +120,11 @@ impl Server {
                                     tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
                                 },
                                 1 => {
+                                    if !auth_status_clone.lock().unwrap().contains_key(&addr) || !auth_status_clone.lock().unwrap().get(&addr).unwrap().1 {
+                                        println!("{}: not login.", addr);
+                                        return future::ok(());
+                                    }
+
                                     let args = req.args.as_object().unwrap();
                                     let token = args["token"].as_str().unwrap();
                                     let value = args["value"].to_owned();
@@ -125,6 +135,11 @@ impl Server {
 
                                     let mut queue = queues_clone.lock().unwrap();
                                     let queue = queue.get_mut(token).unwrap();
+                                    if queue.send_white && !queue.send_token.contains(&auth_status_clone.lock().unwrap().get(&addr).unwrap().0) {
+                                        tx.unbounded_send(Message::Close(None)).unwrap();
+                                        println!("{}: {} queue not in send white list", addr, token);
+                                        return future::ok(());
+                                    }
 
                                     if queue.queue_type.eq("router") {
                                         let key = args["key"].as_str().unwrap().to_string();
@@ -150,11 +165,22 @@ impl Server {
                                     }
                                 },
                                 2 => {
+                                    if !auth_status_clone.lock().unwrap().contains_key(&addr) || !auth_status_clone.lock().unwrap().get(&addr).unwrap().1 {
+                                        println!("{}: not login.", addr);
+                                        return future::ok(());
+                                    }
+
                                     let args = req.args.as_object().unwrap();
                                     let token = args["token"].as_str().unwrap();
 
                                     let mut queue = queues_clone.lock().unwrap();
                                     let queue = queue.get_mut(token).unwrap();
+
+                                    if queue.recv_white && !queue.recv_token.contains(&auth_status_clone.lock().unwrap().get(&addr).unwrap().0) {
+                                        tx.unbounded_send(Message::Close(None)).unwrap();
+                                        println!("{}: {} queue not in recv white list", addr, token);
+                                        return future::ok(());
+                                    }
 
                                     let mut keys = Vec::new();
                                     if queue.queue_type.eq("router") {
@@ -209,6 +235,10 @@ struct SubClient {
 
 struct Queue {
     queue_type: String,
+    send_white: bool,
+    send_token: Vec<String>,
+    recv_white: bool,
+    recv_token: Vec<String>,
     clients: HashMap<SocketAddr, SubClient>
 }
 
