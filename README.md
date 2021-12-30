@@ -10,13 +10,22 @@
 
 ## 命令请求格式
 ```
-//有序args
-{'cmd_id': 'xx', args: []}
-//DIY args
-{'cmd_id': 'xx', args: {
-    "嘿嘿": "嘿嘿嘿"
-    ...
-}}
+//登陆 认证模式
+{"cmdId":0, "args":{"token":"b0107179-42b4-39dd-8220-f48a84b4cef7"}}
+//登陆 guest模式
+{"cmdId":0, "args":{"token":""}}
+
+//发送消息 (router模式)
+{"cmdId":1, "args":{"value": "halo", "key": "呜呜呜", "token":"c09c21f8-c29d-3fb3-86a8-39109742c802"}}
+//订阅消息 (router模式) (单key)
+{"cmdId":2, "args":{"key": "呜呜呜", "token":"c09c21f8-c29d-3fb3-86a8-39109742c802"}}
+//订阅消息 (router模式) (array key)
+{"cmdId":2, "args":{"keys": ["呜呜呜"], "token":"c09c21f8-c29d-3fb3-86a8-39109742c802"}}
+
+//发送消息 (pubsub模式)
+{"cmdId":1, "args":{"value": "halo", "token":"c09c21f8-c29d-3fb3-86a8-39109742c802"}}
+//订阅消息 (pubsub模式)
+{"cmdId":2, "args":{"token":"c09c21f8-c29d-3fb3-86a8-39109742c802"}}
 ```
 
 ## 命令cmd_id
