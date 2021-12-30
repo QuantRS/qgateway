@@ -5,6 +5,7 @@
 ## queue模式
 - router (路由模式)
 - pubsub (懂得都懂)
+
 配置方式查看config.yaml
 
 ## 命令请求格式
