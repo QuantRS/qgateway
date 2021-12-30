@@ -1,5 +1,7 @@
 # QGateway
 
+采用websocket模式。实现发送，接收。
+
 ## 命令请求格式
 ```
 //有序args
