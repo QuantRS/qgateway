@@ -7,6 +7,8 @@ use serde_json::Value;
 use tokio::net::{TcpListener};
 use tokio_tungstenite::tungstenite::Message;
 
+use chrono::{Local, Timelike};
+
 use crate::config;
 
 pub struct Server {
@@ -38,6 +40,9 @@ impl Server {
             send_token: config_queue.send_token,
             recv_white: config_queue.recv_white,
             recv_token: config_queue.recv_token,
+
+            second: -1,
+            second_count: 0,
         });
     }
 
@@ -146,6 +151,15 @@ impl Server {
                                         return future::ok(());
                                     }
 
+                                    //计算 /s
+                                    let second = Local::now().second() as i32;
+                                    if queue.second == second {
+                                        queue.second_count += 1;
+                                    } else {
+                                        queue.second = second;
+                                        queue.second_count = 1;
+                                    }
+
                                     if queue.queue_type.eq("router") {
                                         let key = args["key"].as_str().unwrap().to_string();
                                         for (_, client) in &queue.clients {
@@ -207,6 +221,24 @@ impl Server {
                                     };
                                     tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
                                 },
+                                3 => {
+                                    if !auth_status.contains_key(&addr) || !auth_status.get(&addr).unwrap().1 {
+                                        println!("{}: not login.", addr);
+                                        return future::ok(());
+                                    }
+
+                                    let args = req.args.as_object().unwrap();
+                                    let token = args["token"].as_str().unwrap();
+
+                                    let queue = queues.get_mut(token).unwrap();
+                                    
+                                    let res = Response{
+                                        cmd_id: 3,
+                                        data: Value::String(token.to_string()),
+                                        message: Value::String(format!("message speed: {}/s", queue.second_count))
+                                    };
+                                    tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
+                                },
                                 _ => {}
                             }
                         }
@@ -243,7 +275,10 @@ struct Queue {
     send_token: Vec<String>,
     recv_white: bool,
     recv_token: Vec<String>,
-    clients: HashMap<SocketAddr, SubClient>
+    clients: HashMap<SocketAddr, SubClient>,
+
+    second: i32,
+    second_count: i32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
