@@ -64,7 +64,13 @@ impl Server {
                 let (outgoing, incoming) = ws_stream.split();
             
                 let broadcast_incoming = incoming.try_for_each(|msg| {
-                    //println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
+                    let auth_status_clone = auth_status_clone.clone();
+                    let mut auth_status = auth_status_clone.lock().unwrap();
+
+                    let queues_clone = queues_clone.clone();
+                    let mut queues = queues_clone.lock().unwrap();
+
+                    println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
 
                     match msg {
                         Message::Text(msg) => {
@@ -79,7 +85,7 @@ impl Server {
                             let req: Request = json.unwrap();
                             match req.cmd_id {
                                 -1 => {
-                                    if !auth_status_clone.lock().unwrap().contains_key(&addr) || !auth_status_clone.lock().unwrap().get(&addr).unwrap().1 {
+                                    if !auth_status.contains_key(&addr) || !auth_status.get(&addr).unwrap().1 {
                                         println!("{}: not login.", addr);
                                         return future::ok(());
                                     }
@@ -111,16 +117,16 @@ impl Server {
                                         return future::ok(());
                                     }
 
-                                    auth_status_clone.lock().unwrap().insert(addr, (token, true));
+                                    auth_status.insert(addr, (token, true));
                                     let res = Response{
                                         cmd_id: 0,
-                                        data: Value::Null,
+                                        data: Value::Bool(true),
                                         message: Value::String("login success.".to_string())
                                     };
                                     tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
                                 },
                                 1 => {
-                                    if !auth_status_clone.lock().unwrap().contains_key(&addr) || !auth_status_clone.lock().unwrap().get(&addr).unwrap().1 {
+                                    if !auth_status.contains_key(&addr) || !auth_status.get(&addr).unwrap().1 {
                                         println!("{}: not login.", addr);
                                         return future::ok(());
                                     }
@@ -133,9 +139,8 @@ impl Server {
                                     queue_value.insert("token".to_string(), Value::String(token.to_string()));
                                     queue_value.insert("value".to_string(), value);
 
-                                    let mut queue = queues_clone.lock().unwrap();
-                                    let queue = queue.get_mut(token).unwrap();
-                                    if queue.send_white && !queue.send_token.contains(&auth_status_clone.lock().unwrap().get(&addr).unwrap().0) {
+                                    let queue = queues.get_mut(token).unwrap();
+                                    if queue.send_white && !queue.send_token.contains(&auth_status.get(&addr).unwrap().0) {
                                         tx.unbounded_send(Message::Close(None)).unwrap();
                                         println!("{}: {} queue not in send white list", addr, token);
                                         return future::ok(());
@@ -165,18 +170,17 @@ impl Server {
                                     }
                                 },
                                 2 => {
-                                    if !auth_status_clone.lock().unwrap().contains_key(&addr) || !auth_status_clone.lock().unwrap().get(&addr).unwrap().1 {
+                                    if !auth_status.contains_key(&addr) || !auth_status.get(&addr).unwrap().1 {
                                         println!("{}: not login.", addr);
                                         return future::ok(());
-                                    }
+                                    } 
 
                                     let args = req.args.as_object().unwrap();
                                     let token = args["token"].as_str().unwrap();
 
-                                    let mut queue = queues_clone.lock().unwrap();
-                                    let queue = queue.get_mut(token).unwrap();
+                                    let queue = queues.get_mut(token).unwrap();
 
-                                    if queue.recv_white && !queue.recv_token.contains(&auth_status_clone.lock().unwrap().get(&addr).unwrap().0) {
+                                    if queue.recv_white && !queue.recv_token.contains(&auth_status.get(&addr).unwrap().0) {
                                         tx.unbounded_send(Message::Close(None)).unwrap();
                                         println!("{}: {} queue not in recv white list", addr, token);
                                         return future::ok(());
@@ -197,7 +201,7 @@ impl Server {
                                     });
 
                                     let res = Response{
-                                        cmd_id: 0,
+                                        cmd_id: 2,
                                         data: Value::Null,
                                         message: Value::String("subscribe success.".to_string())
                                     };
