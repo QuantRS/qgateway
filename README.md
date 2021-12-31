@@ -5,6 +5,7 @@
 ## queue模式
 - router (路由模式)
 - pubsub (懂得都懂)
+- rmi (调用模式)
 
 配置方式查看config.yaml
 
