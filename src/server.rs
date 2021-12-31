@@ -70,7 +70,7 @@ impl Server {
                     let queues_clone = queues_clone.clone();
                     let mut queues = queues_clone.lock().unwrap();
 
-                    println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
+                    //println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
 
                     match msg {
                         Message::Text(msg) => {
