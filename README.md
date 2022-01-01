@@ -9,6 +9,10 @@
 
 配置方式查看config.yaml
 
+## 客户端
+- rust版: https://github.com/QuantRS/qgateway_client
+- python版: https://github.com/QuantRS/qgateway_client_pywrap
+
 ## 命令请求格式
 ```
 //登陆 认证模式
