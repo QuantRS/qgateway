@@ -46,7 +46,7 @@ impl Server {
         });
     }
 
-    pub async fn start(&mut self, address: &str) {
+    pub async fn start(&mut self, address: &str, debug: bool) {
         let try_socket = TcpListener::bind(address).await;
         let listener = try_socket.expect("Failed to bind");
         println!("Listening on: ws://{}", address);
@@ -75,8 +75,10 @@ impl Server {
                     let queues_clone = queues_clone.clone();
                     let mut queues = queues_clone.lock().unwrap();
 
-                    //println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
-
+                    if debug {
+                        println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
+                    }
+                    
                     match msg {
                         Message::Text(msg) => {
                             let json = serde_json::from_str(&msg.to_string());

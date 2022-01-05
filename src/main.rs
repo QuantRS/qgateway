@@ -10,5 +10,5 @@ async fn main() {
     let queues = conf["queues"].as_vec().unwrap().iter().map(|x| config::Queue::new(x)).collect::<Vec<config::Queue>>();
 
     let mut server = server::Server::new(auth_tokens, queues);
-    server.start(conf["address"].as_str().unwrap()).await;
+    server.start(conf["address"].as_str().unwrap(), conf["debug"].as_bool().unwrap()).await;
 }
