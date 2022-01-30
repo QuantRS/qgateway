@@ -98,7 +98,7 @@ impl Server {
                                     let mut login_req = protocol::LoginRequest::parse_from_bytes(req.get_data()).unwrap();
 
                                     // 校验 并登录
-                                    if !login_req.get_token().eq("") && !auth_tokens_clone.contains(&login_req.mut_token()) {
+                                    if !login_req.get_token().eq("") && !auth_tokens_clone.iter().any(|t| t == login_req.get_token()) {
                                         tx.unbounded_send(WSMessage::Close(None)).unwrap();
                                         println!("{}: token is error", addr);
                                         return future::ok(());
@@ -122,7 +122,7 @@ impl Server {
                                         return future::ok(());
                                     }
 
-                                    let mut send_req = protocol::SendRequest::parse_from_bytes(req.get_data()).unwrap();
+                                    let send_req = protocol::SendRequest::parse_from_bytes(req.get_data()).unwrap();
 
                                     let queue = queues.get_mut(send_req.get_token()).unwrap();
                                     if queue.send_white && !queue.send_token.contains(&auth_status.get(&addr).unwrap().0) {
@@ -142,7 +142,7 @@ impl Server {
 
                                     if queue.queue_type.eq("router") {
                                         for (_, client) in &queue.clients {
-                                            if client.keys.contains(&send_req.mut_key()) {
+                                            if client.keys.iter().any(|key| key == send_req.get_key()) {
                                                 let mut res = protocol::Response::new();
                                                 res.set_command(protocol::Commands::SUBSCRIBE_CALLBACK);
             
