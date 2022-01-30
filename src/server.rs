@@ -211,12 +211,21 @@ impl Server {
                                     let args = req.args.as_object().unwrap();
                                     let token = args["token"].as_str().unwrap();
 
-                                    let queue = queues.get_mut(token).unwrap();
-                                    
+                                    let queue = queues.get_mut(token);
+                                    if queue.is_none() {
+                                        let res = Response{
+                                            cmd_id: 3,
+                                            data: Value::Null,
+                                            message: Value::String("error.".to_string())
+                                        };
+                                        tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
+                                        return future::ok(());
+                                    }
+
                                     let res = Response{
                                         cmd_id: 3,
                                         data: Value::String(token.to_string()),
-                                        message: Value::String(format!("message speed: {}/s", queue.second_count))
+                                        message: Value::String(format!("message speed: {}/s", queue.unwrap().second_count))
                                     };
                                     tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
                                 }, */
