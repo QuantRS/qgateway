@@ -1,7 +1,8 @@
 # QGateway
+协议已更新。文档稍等
 
-采用websocket模式。实现发送，接收。
-消息层采用protobuf
+- 采用websocket模式。实现发送，接收。
+- 消息层采用protobuf
 
 ## queue模式
 - router (路由模式)

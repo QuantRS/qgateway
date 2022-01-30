@@ -146,12 +146,12 @@ impl Server {
                                                 let mut res = protocol::Response::new();
                                                 res.set_command(protocol::Commands::SUBSCRIBE_CALLBACK);
             
-                                                let mut callback_res = protocol::SubscribeCallback::new();
-                                                callback_res.set_token(send_req.get_token().to_string());
-                                                callback_res.set_key(send_req.get_key().to_string());
-                                                callback_res.set_data(send_req.get_data().to_vec());
+                                                let mut callback = protocol::SubscribeCallback::new();
+                                                callback.set_token(send_req.get_token().to_string());
+                                                callback.set_key(send_req.get_key().to_string());
+                                                callback.set_data(send_req.get_data().to_vec());
                                                 
-                                                res.set_data(callback_res.write_to_bytes().unwrap());
+                                                res.set_data(callback.write_to_bytes().unwrap());
 
                                                 client.tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                             }
@@ -161,11 +161,11 @@ impl Server {
                                             let mut res = protocol::Response::new();
                                             res.set_command(protocol::Commands::SUBSCRIBE_CALLBACK);
         
-                                            let mut callback_res = protocol::SubscribeCallback::new();
-                                            callback_res.set_token(send_req.get_token().to_string());
-                                            callback_res.set_data(send_req.get_data().to_vec());
+                                            let mut callback = protocol::SubscribeCallback::new();
+                                            callback.set_token(send_req.get_token().to_string());
+                                            callback.set_data(send_req.get_data().to_vec());
                                             
-                                            res.set_data(callback_res.write_to_bytes().unwrap());
+                                            res.set_data(callback.write_to_bytes().unwrap());
 
                                             client.tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                         }
