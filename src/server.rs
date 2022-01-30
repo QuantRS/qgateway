@@ -2,14 +2,14 @@ use std::{collections::HashMap, net::SocketAddr, sync::{Arc, Mutex}};
 
 use futures::{StreamExt, TryStreamExt, channel::mpsc::{self, UnboundedSender}, future, pin_mut};
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+
+use protobuf::Message;
 use tokio::net::{TcpListener};
-use tokio_tungstenite::tungstenite::Message;
 
 use chrono::{Local, Timelike};
+use tokio_tungstenite::tungstenite::Message as WSMessage;
 
-use crate::config;
+use crate::{config, protocol};
 
 pub struct Server {
     auth_tokens: Vec<String>,
@@ -80,76 +80,54 @@ impl Server {
                     }
                     
                     match msg {
-                        Message::Text(msg) => {
-                            let json = serde_json::from_str(&msg.to_string());
-                            if !json.is_ok() {
-                                println!("{:?}", json.err().unwrap());
+                        WSMessage::Binary(msg) => {
+                            let req = protocol::Request::parse_from_bytes(&msg);
+                            if req.is_err() {
+                                println!("{:?}", req.err().unwrap());
     
-                                tx.unbounded_send(Message::Close(None)).unwrap();
+                                tx.unbounded_send(WSMessage::Close(None)).unwrap();
                                 return future::ok(());
                             }
-    
-                            let req: Request = json.unwrap();
-                            match req.cmd_id {
-                                -1 => {
-                                    if !auth_status.contains_key(&addr) || !auth_status.get(&addr).unwrap().1 {
-                                        println!("{}: not login.", addr);
-                                        return future::ok(());
-                                    }
 
-                                    let res = Response{
-                                        cmd_id: -1,
-                                        data: Value::Null,
-                                        message: Value::Null
-                                    };
-                                    tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
+                            let req = req.unwrap();
+                            match req.get_command() {
+                                protocol::Commands::HEARTBEAT => {
+                                    //心跳包
                                 },
-                                0 => {
-                                    let mut token = "".to_string();
-                                    if req.args.is_array() {
-                                        let list = req.args.as_array().unwrap();
-                                        if list.len() != 0 {
-                                            token = list[0].as_str().unwrap().to_string();
-                                        }
-                                    } else if req.args.is_object() {
-                                        let map = req.args.as_object().unwrap();
-                                        if map.contains_key("token") {
-                                            token = map["token"].as_str().unwrap().to_string();
-                                        }
-                                    }
+                                protocol::Commands::LOGIN => {
+                                    let mut login_req = protocol::LoginRequest::parse_from_bytes(req.get_data()).unwrap();
 
-                                    if !token.eq("") && !auth_tokens_clone.contains(&token) {
-                                        tx.unbounded_send(Message::Close(None)).unwrap();
+                                    // 校验 并登录
+                                    if !login_req.get_token().eq("") && !auth_tokens_clone.contains(&login_req.mut_token()) {
+                                        tx.unbounded_send(WSMessage::Close(None)).unwrap();
                                         println!("{}: token is error", addr);
                                         return future::ok(());
                                     }
+                                    auth_status.insert(addr, (login_req.get_token().to_string(), true));
 
-                                    auth_status.insert(addr, (token, true));
-                                    let res = Response{
-                                        cmd_id: 0,
-                                        data: Value::Bool(true),
-                                        message: Value::String("login success.".to_string())
-                                    };
-                                    tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
+                                    let mut res = protocol::Response::new();
+                                    res.set_command(protocol::Commands::LOGIN);
+
+                                    let mut login_res = protocol::LoginResponse::new();
+                                    login_res.set_status(true);
+
+                                    res.set_data(login_res.write_to_bytes().unwrap());
+                                    res.set_message("login success.".to_string());
+
+                                    tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                 },
-                                1 => {
+                                protocol::Commands::SEND_MESSAGE => {
                                     if !auth_status.contains_key(&addr) || !auth_status.get(&addr).unwrap().1 {
                                         println!("{}: not login.", addr);
                                         return future::ok(());
                                     }
 
-                                    let args = req.args.as_object().unwrap();
-                                    let token = args["token"].as_str().unwrap();
-                                    let value = args["value"].to_owned();
+                                    let mut send_req = protocol::SendRequest::parse_from_bytes(req.get_data()).unwrap();
 
-                                    let mut queue_value = serde_json::Map::new();
-                                    queue_value.insert("token".to_string(), Value::String(token.to_string()));
-                                    queue_value.insert("value".to_string(), value);
-
-                                    let queue = queues.get_mut(token).unwrap();
+                                    let queue = queues.get_mut(send_req.get_token()).unwrap();
                                     if queue.send_white && !queue.send_token.contains(&auth_status.get(&addr).unwrap().0) {
-                                        tx.unbounded_send(Message::Close(None)).unwrap();
-                                        println!("{}: {} queue not in send white list", addr, token);
+                                        tx.unbounded_send(WSMessage::Close(None)).unwrap();
+                                        println!("{}: {} queue not in send white list", addr, send_req.get_token());
                                         return future::ok(());
                                     }
 
@@ -163,67 +141,68 @@ impl Server {
                                     }
 
                                     if queue.queue_type.eq("router") {
-                                        let key = args["key"].as_str().unwrap().to_string();
                                         for (_, client) in &queue.clients {
-                                            if client.keys.contains(&key) {
-                                                let res = Response{
-                                                    cmd_id: 2,
-                                                    data: Value::Object(queue_value.clone()),
-                                                    message: Value::Null
-                                                };
-                                                client.tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
+                                            if client.keys.contains(&send_req.mut_key()) {
+                                                let mut res = protocol::Response::new();
+                                                res.set_command(protocol::Commands::SUBSCRIBE_CALLBACK);
+            
+                                                let mut callback_res = protocol::SubscribeCallback::new();
+                                                callback_res.set_token(send_req.get_token().to_string());
+                                                callback_res.set_key(send_req.get_key().to_string());
+                                                callback_res.set_data(send_req.get_data().to_vec());
+                                                
+                                                res.set_data(callback_res.write_to_bytes().unwrap());
+
+                                                client.tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                             }
                                         }
                                     } else if  queue.queue_type.eq("pubsub") {
                                         for (_, client) in &queue.clients {
-                                            let res = Response{
-                                                cmd_id: 2,
-                                                data: Value::Object(queue_value.clone()),
-                                                message: Value::Null
-                                            };
-                                            client.tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
+                                            let mut res = protocol::Response::new();
+                                            res.set_command(protocol::Commands::SUBSCRIBE_CALLBACK);
+        
+                                            let mut callback_res = protocol::SubscribeCallback::new();
+                                            callback_res.set_token(send_req.get_token().to_string());
+                                            callback_res.set_data(send_req.get_data().to_vec());
+                                            
+                                            res.set_data(callback_res.write_to_bytes().unwrap());
+
+                                            client.tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                         }
                                     }
                                 },
-                                2 => {
+                                protocol::Commands::SUBSCRIBE => {
                                     if !auth_status.contains_key(&addr) || !auth_status.get(&addr).unwrap().1 {
                                         println!("{}: not login.", addr);
                                         return future::ok(());
-                                    } 
+                                    }
 
-                                    let args = req.args.as_object().unwrap();
-                                    let token = args["token"].as_str().unwrap();
+                                    let mut subscribe_req = protocol::SubscribeRequest::parse_from_bytes(req.get_data()).unwrap();
 
-                                    let queue = queues.get_mut(token).unwrap();
-
+                                    let queue = queues.get_mut(subscribe_req.get_token()).unwrap();
                                     if queue.recv_white && !queue.recv_token.contains(&auth_status.get(&addr).unwrap().0) {
-                                        tx.unbounded_send(Message::Close(None)).unwrap();
-                                        println!("{}: {} queue not in recv white list", addr, token);
+                                        tx.unbounded_send(WSMessage::Close(None)).unwrap();
+                                        println!("{}: {} queue not in recv white list", addr, subscribe_req.get_token());
                                         return future::ok(());
                                     }
 
-                                    let mut keys = Vec::new();
-                                    if queue.queue_type.eq("router") {
-                                        if args.contains_key("key") {
-                                            keys.push(args["key"].as_str().unwrap().to_string())
-                                        } else if args.contains_key("keys") {
-                                            keys.extend(args["keys"].as_array().unwrap().iter().map(|x| x.as_str().unwrap().to_string()).collect::<Vec<String>>());
-                                        }
-                                    }
-
                                     queue.clients.insert(addr, SubClient{
-                                        keys,
+                                        keys: subscribe_req.mut_keys().to_vec(),
                                         tx: tx.clone(),
                                     });
 
-                                    let res = Response{
-                                        cmd_id: 2,
-                                        data: Value::Null,
-                                        message: Value::String("subscribe success.".to_string())
-                                    };
-                                    tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
+                                    let mut res = protocol::Response::new();
+                                    res.set_command(protocol::Commands::SUBSCRIBE);
+
+                                    let mut subscribe_res = protocol::SubscribeResponse::new();
+                                    subscribe_res.set_token(subscribe_req.get_token().to_string());
+                                    subscribe_res.set_success(true);
+ 
+                                    res.set_data(subscribe_res.write_to_bytes().unwrap());
+
+                                    tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                 },
-                                3 => {
+                                /* protocol::Commands::STATUS => {
                                     if !auth_status.contains_key(&addr) || !auth_status.get(&addr).unwrap().1 {
                                         println!("{}: not login.", addr);
                                         return future::ok(());
@@ -240,7 +219,7 @@ impl Server {
                                         message: Value::String(format!("message speed: {}/s", queue.second_count))
                                     };
                                     tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
-                                },
+                                }, */
                                 _ => {}
                             }
                         }
@@ -268,7 +247,7 @@ impl Server {
 
 struct SubClient {
     keys: Vec<String>,
-    tx: UnboundedSender<Message>
+    tx: UnboundedSender<WSMessage>
 }
 
 struct Queue {
@@ -282,22 +261,3 @@ struct Queue {
     second: i32,
     second_count: i32,
 }
-
-#[derive(Debug, Clone, Deserialize)]
-struct Request {
-    #[serde(rename = "cmdId")]
-    cmd_id: i32,
-    args: Value
-}
-
-
-#[derive(Debug, Clone, Serialize)]
-struct Response {
-    #[serde(rename = "cmdId")]
-    cmd_id: i32,
-    #[serde(skip_serializing_if = "Value::is_null")]
-    data: Value,
-    #[serde(skip_serializing_if = "Value::is_null")]
-    message: Value
-}
-

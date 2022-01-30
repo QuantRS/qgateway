@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+enum Commands {
+    HEARTBEAT = 0;
+    LOGIN = 1;
+    SEND_MESSAGE = 2;
+    SUBSCRIBE = 3;
+    SUBSCRIBE_CALLBACK = 4;
+    MESSAGE_STATUS = 5;
+}
+
+//基础协议
+message Request {
+    Commands command = 1;
+    bytes data = 2;
+}
+message Response {
+    Commands command = 1;
+    bytes data = 2;
+    string message = 3;
+}
+
+// 登陆认证
+message LoginRequest {
+    string token = 1;
+}
+message LoginResponse {
+    bool status = 1;
+}
+
+// 发送消息
+message SendRequest {
+    string token = 1;
+    string key = 2;
+    bytes data = 3;
+}
+
+// 订阅请求
+message SubscribeRequest {
+    string token = 1;
+    repeated string keys = 2;
+}
+message SubscribeResponse {
+    string token = 1;
+    bool success = 2;
+}
+
+// 订阅回调
+message SubscribeCallback {
+    string token = 1;
+    string key = 2;
+    bytes data = 3;
+}

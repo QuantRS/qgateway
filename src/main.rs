@@ -1,6 +1,7 @@
 
 mod yaml;
 mod config;
+mod protocol;
 mod server;
 
 #[tokio::main]
