@@ -112,7 +112,6 @@ impl Server {
                                     login_res.set_status(true);
 
                                     res.set_data(login_res.write_to_bytes().unwrap());
-                                    res.set_message("login success.".to_string());
 
                                     tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                 },
@@ -202,33 +201,31 @@ impl Server {
 
                                     tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                 },
-                                /* protocol::Commands::STATUS => {
+                                protocol::Commands::MESSAGE_STATUS => {
                                     if !auth_status.contains_key(&addr) || !auth_status.get(&addr).unwrap().1 {
                                         println!("{}: not login.", addr);
                                         return future::ok(());
                                     }
 
-                                    let args = req.args.as_object().unwrap();
-                                    let token = args["token"].as_str().unwrap();
+                                    let mut status_req = protocol::StatusRequest::parse_from_bytes(req.get_data()).unwrap();
 
-                                    let queue = queues.get_mut(token);
-                                    if queue.is_none() {
-                                        let res = Response{
-                                            cmd_id: 3,
-                                            data: Value::Null,
-                                            message: Value::String("error.".to_string())
-                                        };
-                                        tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
-                                        return future::ok(());
+                                    let queue = queues.get_mut(status_req.get_token());
+
+                                    let mut res = protocol::Response::new();
+                                    res.set_command(protocol::Commands::MESSAGE_STATUS);
+
+                                    if queue.is_some() {
+                                        let queue = queue.unwrap();
+
+                                        let mut status_res = protocol::StatusResponse::new();
+                                        status_res.set_token(status_req.take_token());
+                                        status_res.set_qps(queue.second_count);
+                                        status_res.set_connections(queue.clients.len() as i32);
+                                        res.set_data(status_res.write_to_bytes().unwrap());
                                     }
-
-                                    let res = Response{
-                                        cmd_id: 3,
-                                        data: Value::String(token.to_string()),
-                                        message: Value::String(format!("message speed: {}/s", queue.unwrap().second_count))
-                                    };
-                                    tx.unbounded_send(Message::Text(serde_json::to_string(&res).unwrap())).unwrap();
-                                }, */
+                                    
+                                    tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
+                                },
                                 _ => {}
                             }
                         }

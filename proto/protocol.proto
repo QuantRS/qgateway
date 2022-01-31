@@ -17,7 +17,6 @@ message Request {
 message Response {
     Commands command = 1;
     bytes data = 2;
-    string message = 3;
 }
 
 // 登陆认证
@@ -50,4 +49,14 @@ message SubscribeCallback {
     string token = 1;
     string key = 2;
     bytes data = 3;
+}
+
+// 状态请求
+message StatusRequest {
+    string token = 1;
+}
+message StatusResponse {
+    string token = 1;
+    int32 qps = 2;
+    int32 connections = 3;
 }
