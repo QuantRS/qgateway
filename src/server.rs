@@ -95,7 +95,7 @@ impl Server {
                                     //心跳包
                                 },
                                 protocol::Commands::LOGIN => {
-                                    let mut login_req = protocol::LoginRequest::parse_from_bytes(req.get_data()).unwrap();
+                                    let login_req = protocol::LoginRequest::parse_from_bytes(req.get_data()).unwrap();
 
                                     // 校验 并登录
                                     if !login_req.get_token().eq("") && !auth_tokens_clone.iter().any(|t| t == login_req.get_token()) {
