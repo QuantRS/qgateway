@@ -3,8 +3,8 @@ use std::{collections::HashMap, net::SocketAddr, sync::{Arc, Mutex}};
 use futures::{StreamExt, TryStreamExt, channel::mpsc::{self, UnboundedSender}, future, pin_mut};
 
 
-use protobuf::Message;
-use tokio::net::{TcpListener};
+use protobuf::{Message, EnumOrUnknown};
+use tokio::net::TcpListener;
 
 use chrono::{Local, Timelike};
 use tokio_tungstenite::tungstenite::Message as WSMessage;
@@ -90,28 +90,28 @@ impl Server {
                             }
 
                             let req = req.unwrap();
-                            match req.get_command() {
+                            match req.command.enum_value().unwrap() {
                                 protocol::Commands::HEARTBEAT => {
                                     //心跳包
                                 },
                                 protocol::Commands::LOGIN => {
-                                    let login_req = protocol::LoginRequest::parse_from_bytes(req.get_data()).unwrap();
+                                    let login_req = protocol::LoginRequest::parse_from_bytes(&req.data).unwrap();
 
                                     // 校验 并登录
-                                    if !login_req.get_token().eq("") && !auth_tokens_clone.iter().any(|t| t == login_req.get_token()) {
+                                    if !login_req.token.eq("") && !auth_tokens_clone.iter().any(|t| t.eq(&login_req.token)) {
                                         tx.unbounded_send(WSMessage::Close(None)).unwrap();
                                         println!("{}: token is error", addr);
                                         return future::ok(());
                                     }
-                                    auth_status.insert(addr, (login_req.get_token().to_string(), true));
+                                    auth_status.insert(addr, (login_req.token.to_string(), true));
 
                                     let mut res = protocol::Response::new();
-                                    res.set_command(protocol::Commands::LOGIN);
+                                    res.command = EnumOrUnknown::new(protocol::Commands::LOGIN);
 
                                     let mut login_res = protocol::LoginResponse::new();
-                                    login_res.set_status(true);
+                                    login_res.status = true;
 
-                                    res.set_data(login_res.write_to_bytes().unwrap());
+                                    res.data = login_res.write_to_bytes().unwrap();
 
                                     tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                 },
@@ -121,12 +121,12 @@ impl Server {
                                         return future::ok(());
                                     }
 
-                                    let send_req = protocol::SendRequest::parse_from_bytes(req.get_data()).unwrap();
+                                    let send_req = protocol::SendRequest::parse_from_bytes(&req.data).unwrap();
 
-                                    let queue = queues.get_mut(send_req.get_token()).unwrap();
+                                    let queue = queues.get_mut(&send_req.token).unwrap();
                                     if queue.send_white && !queue.send_token.contains(&auth_status.get(&addr).unwrap().0) {
                                         tx.unbounded_send(WSMessage::Close(None)).unwrap();
-                                        println!("{}: {} queue not in send white list", addr, send_req.get_token());
+                                        println!("{}: {} queue not in send white list", addr, send_req.token);
                                         return future::ok(());
                                     }
 
@@ -141,16 +141,16 @@ impl Server {
 
                                     if queue.queue_type.eq("router") {
                                         for (_, client) in &queue.clients {
-                                            if client.keys.iter().any(|key| key == send_req.get_key()) {
+                                            if client.keys.iter().any(|key| key.eq(&send_req.key)) {
                                                 let mut res = protocol::Response::new();
-                                                res.set_command(protocol::Commands::SUBSCRIBE_CALLBACK);
+                                                res.command = EnumOrUnknown::new(protocol::Commands::SUBSCRIBE_CALLBACK);
             
                                                 let mut callback = protocol::SubscribeCallback::new();
-                                                callback.set_token(send_req.get_token().to_string());
-                                                callback.set_key(send_req.get_key().to_string());
-                                                callback.set_data(send_req.get_data().to_vec());
+                                                callback.token = send_req.token.to_string();
+                                                callback.key = send_req.key.to_string();
+                                                callback.data = send_req.data.to_vec();
                                                 
-                                                res.set_data(callback.write_to_bytes().unwrap());
+                                                res.data = callback.write_to_bytes().unwrap();
 
                                                 client.tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                             }
@@ -158,13 +158,13 @@ impl Server {
                                     } else if  queue.queue_type.eq("pubsub") {
                                         for (_, client) in &queue.clients {
                                             let mut res = protocol::Response::new();
-                                            res.set_command(protocol::Commands::SUBSCRIBE_CALLBACK);
+                                            res.command = EnumOrUnknown::new(protocol::Commands::SUBSCRIBE_CALLBACK);
         
                                             let mut callback = protocol::SubscribeCallback::new();
-                                            callback.set_token(send_req.get_token().to_string());
-                                            callback.set_data(send_req.get_data().to_vec());
+                                            callback.token = send_req.token.to_string();
+                                            callback.data = send_req.data.to_vec();
                                             
-                                            res.set_data(callback.write_to_bytes().unwrap());
+                                            res.data = callback.write_to_bytes().unwrap();
 
                                             client.tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                         }
@@ -176,28 +176,28 @@ impl Server {
                                         return future::ok(());
                                     }
 
-                                    let mut subscribe_req = protocol::SubscribeRequest::parse_from_bytes(req.get_data()).unwrap();
+                                    let subscribe_req = protocol::SubscribeRequest::parse_from_bytes(&req.data).unwrap();
 
-                                    let queue = queues.get_mut(subscribe_req.get_token()).unwrap();
+                                    let queue = queues.get_mut(&subscribe_req.token).unwrap();
                                     if queue.recv_white && !queue.recv_token.contains(&auth_status.get(&addr).unwrap().0) {
                                         tx.unbounded_send(WSMessage::Close(None)).unwrap();
-                                        println!("{}: {} queue not in recv white list", addr, subscribe_req.get_token());
+                                        println!("{}: {} queue not in recv white list", addr, subscribe_req.token);
                                         return future::ok(());
                                     }
 
                                     queue.clients.insert(addr, SubClient{
-                                        keys: subscribe_req.mut_keys().to_vec(),
+                                        keys: subscribe_req.keys.to_vec(),
                                         tx: tx.clone(),
                                     });
 
                                     let mut res = protocol::Response::new();
-                                    res.set_command(protocol::Commands::SUBSCRIBE);
+                                    res.command = EnumOrUnknown::new(protocol::Commands::SUBSCRIBE);
 
                                     let mut subscribe_res = protocol::SubscribeResponse::new();
-                                    subscribe_res.set_token(subscribe_req.get_token().to_string());
-                                    subscribe_res.set_success(true);
+                                    subscribe_res.token = subscribe_req.token.to_string();
+                                    subscribe_res.success = true;
  
-                                    res.set_data(subscribe_res.write_to_bytes().unwrap());
+                                    res.data = subscribe_res.write_to_bytes().unwrap();
 
                                     tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
                                 },
@@ -207,21 +207,21 @@ impl Server {
                                         return future::ok(());
                                     }
 
-                                    let mut status_req = protocol::StatusRequest::parse_from_bytes(req.get_data()).unwrap();
+                                    let status_req = protocol::StatusRequest::parse_from_bytes(&req.data).unwrap();
 
-                                    let queue = queues.get_mut(status_req.get_token());
+                                    let queue = queues.get_mut(&status_req.token);
 
                                     let mut res = protocol::Response::new();
-                                    res.set_command(protocol::Commands::MESSAGE_STATUS);
+                                    res.command = EnumOrUnknown::new(protocol::Commands::MESSAGE_STATUS);
 
                                     if queue.is_some() {
                                         let queue = queue.unwrap();
 
                                         let mut status_res = protocol::StatusResponse::new();
-                                        status_res.set_token(status_req.take_token());
-                                        status_res.set_qps(queue.second_count);
-                                        status_res.set_connections(queue.clients.len() as i32);
-                                        res.set_data(status_res.write_to_bytes().unwrap());
+                                        status_res.token = status_req.token;
+                                        status_res.qps = queue.second_count;
+                                        status_res.connections = queue.clients.len() as i32;
+                                        res.data = status_res.write_to_bytes().unwrap();
                                     }
                                     
                                     tx.unbounded_send(WSMessage::Binary(res.write_to_bytes().unwrap())).unwrap();
